@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Linq;
@@ -30,7 +30,7 @@ namespace Jackett.Common.Indexers
 
         private new ConfigurationData configData
         {
-            get { return (ConfigurationData) base.configData; }
+            get { return (ConfigurationData)base.configData; }
             set { base.configData = value; }
         }
 
@@ -80,35 +80,36 @@ namespace Jackett.Common.Indexers
             {
                 dynamic json = JsonConvert.DeserializeObject<dynamic>(result.Content);
 
-                if ( json is JObject )
+                if (json is JObject)
                     if (json["ok"] != null && ((bool)json["ok"]) == false)
                         throw new Exception("Server error");
 
                 return json;
-            } catch (Exception e)
+            }
+            catch (Exception e)
             {
-                logger.Error("checkResponse() Error: ",  e.Message);
+                logger.Error("checkResponse() Error: ", e.Message);
                 throw new ExceptionWithConfigData(result.Content, configData);
             }
         }
 
-        private async Task<dynamic> SendAPIRequest(List<KeyValuePair<string,string>> data)
+        private async Task<dynamic> SendAPIRequest(List<KeyValuePair<string, string>> data)
         {
             var jsonData = JsonConvert.SerializeObject(data);
-            var result = await PostDataWithCookiesAndRetry( APISearch, data, null, SiteLink, APIHeaders, null, true );
+            var result = await PostDataWithCookiesAndRetry(APISearch, data, null, SiteLink, APIHeaders, null, true);
             return checkResponse(result);
         }
 
         private async Task<dynamic> SendAPIRequestLatest()
         {
-            var result = await RequestStringWithCookiesAndRetry( APILatest, null, SiteLink, APIHeaders );
+            var result = await RequestStringWithCookiesAndRetry(APILatest, null, SiteLink, APIHeaders);
             return checkResponse(result);
         }
 
         protected override async Task<IEnumerable<ReleaseInfo>> PerformQuery(TorznabQuery query)
         {
             var releases = new List<ReleaseInfo>();
-   
+
             var searchString = query.GetQueryString();
             var queryCollection = new List<KeyValuePair<string, string>>();
             int page = 0;
@@ -127,10 +128,8 @@ namespace Jackett.Common.Indexers
 
                     foreach (var torrent in json)
                     {
-                        var release = new ReleaseInfo();
-                        // add only title..
-                        release.Title = (String)torrent["title"];
-                        releases.Add(release);
+                        // add release
+                        releases.Add(makeRelease(torrent));
                     }
                 }
                 catch (Exception ex)
@@ -153,7 +152,7 @@ namespace Jackett.Common.Indexers
             do
             {
                 // update page number
-                queryCollection.RemoveAt( queryCollection.Count-1 ); // remove last elem: page number 
+                queryCollection.RemoveAt(queryCollection.Count - 1); // remove last elem: page number 
                 queryCollection.Add("page", (++page).ToString());
 
                 var result = await SendAPIRequest(queryCollection);
@@ -161,7 +160,7 @@ namespace Jackett.Common.Indexers
                 {
                     // this time is a jobject
                     JObject json = (JObject)result;
-                                    
+
                     if (json["results"] == null)
                         throw new Exception("Error invalid JSON response");
 
@@ -171,49 +170,8 @@ namespace Jackett.Common.Indexers
 
                     foreach (var torrent in json["results"])
                     {
-                        var release = new ReleaseInfo();
-
-                        release.Title = (String)torrent["title"];
-
-                        release.Comments = new Uri((string)torrent["link"]);
-                        release.Guid = release.Comments;
-                        //release.Link = release.Comments;
-
-                        if (torrent["last_updated"] != null)
-                            release.PublishDate = DateTime.Parse((string)torrent["last_updated"]);
-
-                        // TODO: don't know how to map this cats..
-                        int cat = (int)torrent["category"];
-                        release.Category = MapTrackerCatToNewznab(cat.ToString());
-
-                        if(torrent["size"]!=null)
-                            release.Size = (long)torrent["size"];
-                        
-                        release.Grabs = (long)torrent["completed"];
-
-                        release.Description = (string)torrent["description"];
-
-                        /*
-                        RageID = copyFrom.RageID;
-                        Imdb = copyFrom.Imdb;
-                        TMDb = copyFrom.TMDb;
-                        */
-
-                        release.Seeders = (int)torrent["seeders"];
-                        release.Peers = release.Seeders + (int)torrent["leechers"];
-
-                        release.InfoHash = (string)torrent["hash"];
-                        release.MagnetUri = new Uri((string)torrent["magnet"]);
-
-                        /*
-                        MinimumRatio = copyFrom.MinimumRatio;
-                        MinimumSeedTime = copyFrom.MinimumSeedTime;
-                        DownloadVolumeFactor = copyFrom.DownloadVolumeFactor;
-                        UploadVolumeFactor = copyFrom.UploadVolumeFactor;
-                        */
-
                         // add release
-                        releases.Add(release);
+                        releases.Add( makeRelease(torrent) );
                     }
                 }
                 catch (Exception ex)
@@ -222,9 +180,55 @@ namespace Jackett.Common.Indexers
                     break;
                 }
 
-            } while (true);
+            } while (page < MAX_SEARCH_PAGE_LIMIT);
 
             return releases;
+        }
+
+        private ReleaseInfo makeRelease(JToken torrent)
+        {
+            var release = new ReleaseInfo();
+
+            release.Title = (String)torrent["title"];
+
+            release.Comments = new Uri((string)torrent["link"]);
+            release.Guid = release.Comments;
+            //release.Link = release.Comments;
+
+            if (torrent["last_updated"] != null)
+                release.PublishDate = DateTime.Parse((string)torrent["last_updated"]);
+
+            // TODO: don't know how to map this cats..
+            int cat = (int)torrent["category"];
+            release.Category = MapTrackerCatToNewznab(cat.ToString());
+
+            if (torrent["size"] != null)
+                release.Size = (long)torrent["size"];
+
+            release.Grabs = (long)torrent["completed"];
+
+            release.Description = (string)torrent["description"];
+
+            /*
+            RageID = copyFrom.RageID;
+            Imdb = copyFrom.Imdb;
+            TMDb = copyFrom.TMDb;
+            */
+
+            release.Seeders = (int)torrent["seeders"];
+            release.Peers = release.Seeders + (int)torrent["leechers"];
+
+            release.InfoHash = (string)torrent["hash"];
+            release.MagnetUri = new Uri((string)torrent["magnet"]);
+
+            /*
+            MinimumRatio = copyFrom.MinimumRatio;
+            MinimumSeedTime = copyFrom.MinimumSeedTime;
+            DownloadVolumeFactor = copyFrom.DownloadVolumeFactor;
+            UploadVolumeFactor = copyFrom.UploadVolumeFactor;
+            */
+
+            return release;
         }
     }
 }
