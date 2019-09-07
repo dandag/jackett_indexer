@@ -177,7 +177,6 @@ namespace Jackett.Common.Indexers
                 catch (Exception ex)
                 {
                     OnParseError(result.ToString(), ex);
-                    break;
                 }
 
             } while (page < MAX_SEARCH_PAGE_LIMIT);
